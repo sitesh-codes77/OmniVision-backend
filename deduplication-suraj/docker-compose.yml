@@ -26,9 +26,26 @@ services:
 
   # --- DOCKERIZED FRONTEND CONTAINER APP ---
   frontend_app:
-    image: codevault07/omnivision-frontend:latest # Or build it inline via git clone on the server
+    build:
+      context: ../../omnivision-frontend # Builds locally to avoid the "pull access denied" error
+      dockerfile: Dockerfile
     container_name: omnivision_frontend
     restart: always
+    networks:
+      - app_network
+
+  # --- DOCKERIZED NODE.JS BACKEND ---
+  # Added this so your senior's Nginx config can route to http://billion-eye-backend:5000/
+  billion-eye-backend:
+    build:
+      context: ../billion-eye-backend-suraj
+      dockerfile: Dockerfile
+    container_name: billion-eye-backend
+    restart: always
+    environment:
+      - PORT=5000
+      - MONGO_URI=mongodb://mongodb:27017/BillionEyes_V1
+      - RABBITMQ_HOST=rabbitmq
     networks:
       - app_network
 
@@ -72,8 +89,6 @@ services:
     image: mongo:latest
     container_name: mongodb
     restart: always
-    ports:
-      - "27017:27017" # Exposed to the host so your PM2 Node server can connect natively
     volumes:
       - mongo_data:/data/db
     logging:
@@ -86,9 +101,6 @@ services:
     image: rabbitmq:3-management
     container_name: rabbitmq
     restart: always
-    ports:
-      - "5672:5672"   # Exposed to the host so PM2 can drop incident messages natively
-      - "15672:15672"
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
       - ./rabbitmq_config/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf
@@ -109,11 +121,13 @@ services:
     environment:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin
-    ports:
-      - "9000:9000"
-      - "9001:9001"
     volumes:
       - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     networks:
       - app_network
 
