@@ -1,0 +1,136 @@
+version: "3.8"
+
+networks:
+  app_network:
+    driver: bridge
+
+services:
+  # --- NGINX REVERSE PROXY & AUTOMATED REVERSE SSL CORRIDOR ---
+  nginx:
+    image: nginx:alpine
+    container_name: omnivision_nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+    depends_on:
+      - node_backend
+    networks:
+      - app_network
+
+  node_backend:
+    build:
+      context: ../billion-eye-backend-suraj
+      dockerfile: Dockerfile
+    container_name: omnivision_node_backend
+    restart: always
+    environment:
+      - PORT=5000
+      - MONGO_URI=mongodb://mongodb:27017/BillionEyes_V1
+      - RABBITMQ_HOST=rabbitmq
+    networks:
+      - app_network
+      
+  app:
+    image: dibyatman/docker_yolo_validatation-app:V1.1 
+    env_file: 
+      - .env
+    depends_on:
+      - mongodb
+      - rabbitmq
+      - minio
+      - deduplication_services
+    restart: always
+    environment:
+      - PYTHONUNBUFFERED=1
+    command: python /app/optimize_yolo_mongodb.py
+    networks:
+      - app_network
+
+    # ---------------- VLM OBJECT DETECTION ----------------
+  vlm_object_detection:
+    image: samssahu/vlmobject-detection:latest
+    container_name: vlm_object_detection
+    restart: always
+    environment:
+      - QUEUE_NAME=vlm_queue
+      - RABBITMQ_HOST=rabbitmq
+      - MONGO_HOST=mongodb
+      - MINIO_HOST=minio
+    depends_on:
+      - rabbitmq
+      - mongodb
+      - minio
+    networks:
+      - app_network
+      
+  mongodb:
+    image: mongo:latest
+    container_name: mongodb
+    restart: always
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    logging:
+      driver: "none"
+    networks:
+      - app_network
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: rabbitmq
+    restart: always
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+      - ./rabbitmq_config/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "status"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app_network
+
+  minio:
+    image: minio/minio
+    container_name: minio
+    command: server /data --console-address ":9001"
+    restart: always
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app_network
+
+  deduplication_services:
+    image: ashpikachu2001/deduplication_services:V1.4
+    container_name: deduplication_services
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    networks:
+      - app_network
+    tty: true
+
+volumes:
+  mongo_data:
+  minio_data:
+  rabbitmq_data:
