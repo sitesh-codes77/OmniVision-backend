@@ -26,7 +26,7 @@ services:
 
   # --- DOCKERIZED FRONTEND CONTAINER APP ---
   frontend_app:
-    image: your-dockerhub-username/omnivision-frontend:latest # Or build it inline via git clone on the server
+    image: codevault07/omnivision-frontend:latest # Or build it inline via git clone on the server
     container_name: omnivision_frontend
     restart: always
     networks:
