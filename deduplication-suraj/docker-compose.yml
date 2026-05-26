@@ -46,6 +46,7 @@ services:
       - PORT=5000
       - MONGO_URI=mongodb://mongodb:27017/BillionEyes_V1
       - RABBITMQ_HOST=rabbitmq
+      - JWT_PRIVATE_KEY=your_super_secret_jwt_key_here_change_in_production
     networks:
       - app_network
 
